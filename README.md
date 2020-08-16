@@ -8,12 +8,12 @@ Wiske currently only supports Linux, but I hope to target Windows and Mac as wel
 
 Wiske originated as a synthesizer for sister-project [Tabby](https://github.com/jthistle/tabby), an ASCII guitar tab editor.
 
-# Structure
+## Structure
 
 The main module is in `/wiske`.
 
 A couple of demos/manual tests are in the root directory as `sf_test*.py`.
 
-# Docs
+## Docs
 
 There are none! There will be some!
