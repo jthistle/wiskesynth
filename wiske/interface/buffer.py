@@ -1,5 +1,5 @@
 
-from util.logger import logger
+from ..util.logger import logger
 
 from multiprocessing import Queue
 

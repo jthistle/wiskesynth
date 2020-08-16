@@ -1,5 +1,5 @@
 
-import synth.sf2.decode as decode
+import wiske.sf2.decode as decode
 from .defaults import DEFAULT_MODULATORS, SF_GEN_DEFAULTS
 from .definitions import rangesType
 

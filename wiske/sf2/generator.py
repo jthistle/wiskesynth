@@ -1,7 +1,7 @@
 
-from util.logger import logger
+from ..util.logger import logger
 
-import synth.sf2.decode as decode
+import wiske.sf2.decode as decode
 from .definitions import SFGenerator, genAmountType, rangesType, sampleModes, get_gen_amount_type
 
 

@@ -3,7 +3,7 @@ import time
 import struct
 from threading import Thread
 
-from util.logger import logger
+from ..util.logger import logger
 from .message import MessageType
 
 VAL_LIMIT = (1 << 15) - 1

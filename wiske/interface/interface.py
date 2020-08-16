@@ -5,7 +5,7 @@ import struct
 from threading import Thread, Lock
 from multiprocessing import Process, Queue, Pipe, Manager
 
-from util.logger import logger
+from ..util.logger import logger
 from .processor import run_processor
 from .alsa import run_alsa
 from .buffer import AudioBuffer

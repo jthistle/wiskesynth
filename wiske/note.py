@@ -8,7 +8,7 @@ from .sf2.definitions import SFGenerator, LoopType
 from .interface import CustomBuffer
 from .sf2.convertors import timecents_to_secs, decibels_to_atten
 from .envelope import Envelope
-from util.logger import logger
+from .util.logger import logger
 
 
 # Optimization tooling

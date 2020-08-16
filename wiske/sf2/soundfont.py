@@ -1,7 +1,7 @@
 
-from util.logger import logger
+from ..util.logger import logger
 
-import synth.sf2.decode as decode
+import wiske.sf2.decode as decode
 from .exceptions import SoundfontException, SoundfontReadException, SoundfontIncompatibleVersion
 from .riff_reader import RiffReader
 from .sample import Sample

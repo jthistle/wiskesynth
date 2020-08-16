@@ -1,5 +1,5 @@
 
-import synth.sf2.decode as decode
+import wiske.sf2.decode as decode
 
 
 class Instrument:
