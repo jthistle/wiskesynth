@@ -3,6 +3,8 @@ from .sf2.soundfont import Soundfont
 from .interface import AudioInterface, AudioConfig
 from .instrument import Instrument
 
+import sys
+
 class Synthesizer:
     sfont = None
     preset = None
@@ -11,6 +13,9 @@ class Synthesizer:
         cfg = AudioConfig()
         cfg.period_size = 64
         self.interface = AudioInterface(cfg, max_latency=0.005)
+        
+        # Experimental
+        sys.setswitchinterval(0.1)
 
     def load_soundfont(self, path):
         self.sfont = Soundfont(path)

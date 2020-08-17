@@ -11,11 +11,6 @@ from .envelope import Envelope
 from .util.logger import logger
 
 
-# Optimization tooling
-import cProfile
-profile = cProfile.Profile()
-
-
 COARSE_SIZE = 2 ** 15
 BASE_SAMPLE_RATE = 44100
 SINGLE_SAMPLE_LEN = 1 / 44100
@@ -87,13 +82,9 @@ class Note:
     def stop(self):
         self.vol_env.release()
 
-    def collect(self, *args):
-        return self.__collect(*args)
-        # return profile.runcall(self.__collect, *args)
-
-    def __collect(self, size, looping):
+    def collect(self, size, looping):
         if self.vol_env.finished:
-            self.inter.end_loop(self.playback)
+            self.inter.end_loop(self.playback)  # TODO thread this?
             return []
 
         channel_ratio = 2        # TODO do this properly
@@ -103,49 +94,54 @@ class Note:
         count = 0
         offset = math.ceil(rate)
         end = self.sample_size - offset
-        while looping or self.position < end:
-            i = int(self.position)
-            frac = self.position - i
-            s1 = self.sample_data[i]
+
+        # Whole load of local variables for optimization
+        time_diff = SINGLE_SAMPLE_LEN
+        loop = self.loop
+        data = self.sample_data
+        position = self.position
+        vol_env = self.vol_env
+
+        vol_env_start_val = self.vol_env.start_val
+        vol_env_current_val = self.vol_env.current_val
+        vol_env_target_val = self.vol_env.target_val
+        vol_env_position = self.vol_env.position
+        vol_env_total_time = self.vol_env.total_time
+        vol_env_phase = self.vol_env.current_phase
+
+        while (looping or position < end) and count < size:
+            i = int(position)
+            frac = position - i
+            s1 = data[i]
             # If adding the offset overshoots the end of the sample loop, make sure that we wrap back arround
             # to the start of the loop again. Enjoy the horrible conditional.
-            s2 = self.sample_data[i + offset if not looping or i + offset < self.loop[1] else self.loop[0] + (i + offset - self.loop[1])]
-            val = int(s1 + (s2 - s1) * frac) * self.vol_env.current_val
+            s2 = data[i + offset if not looping or i + offset < loop[1] else loop[0] + (i + offset - loop[1])]
+            val = (s1 + (s2 - s1) * frac) * vol_env_current_val
 
             finished += [val] * channel_ratio
             count += channel_ratio
 
-            self.position += rate
-            if looping and self.position > self.loop[1]:
-                self.position = self.loop[0] + (self.position - self.loop[1])
+            position += rate
+            if looping and position > loop[1]:
+                position = loop[0] + (position - loop[1])
 
-            # envprofile.runcall(self.vol_env.update, SINGLE_SAMPLE_LEN)
-            self.vol_env.update(SINGLE_SAMPLE_LEN)
+            if vol_env_phase not in (4, 6): # sustain, finished
+                vol_env_position += time_diff
+                if vol_env_position >= vol_env_total_time:
+                    vol_env_start_val, vol_env_target_val, vol_env_total_time, vol_env_phase = self.vol_env.next_phase()
+                    vol_env_current_val = vol_env_start_val
+                    vol_env_position = 0
+                else:
+                    vol_env_current_val = vol_env_start_val + (vol_env_target_val - vol_env_start_val) * (vol_env_position / vol_env_total_time)
 
-            if count >= size:
-                break
+        self.position = position
+
+        self.vol_env.start_val = vol_env_start_val
+        self.vol_env.current_val = vol_env_current_val
+        self.vol_env.target_val = vol_env_target_val
+        self.vol_env.position = vol_env_position
+        self.vol_env.total_time = vol_env_total_time
+        self.vol_env.current_phase = vol_env_phase
 
         return finished
 
-
-# Optimization tools
-
-import sys, signal, pstats
-
-def end(signum, frame):
-    global profile
-    global envprofile
-    try:
-        ps = pstats.Stats(profile)
-        ps.sort_stats("cumtime")
-        print("\n==== COLLECT ")
-        ps.print_stats(1.0)
-        print("\n ///")
-        ps.print_callers()
-    except:
-        pass
-    sys.exit(0)
-
-# signal.signal(signal.SIGINT, end)
-# signal.signal(signal.SIGKILL, end)
-# signal.signal(signal.SIGPIPE, end)
