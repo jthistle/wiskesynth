@@ -1,5 +1,5 @@
 
-import wiske.sf2.decode as decode
+from .decode import decode
 from .definitions import SFGenerator
 from .defaults import SF_GEN_DEFAULTS
 

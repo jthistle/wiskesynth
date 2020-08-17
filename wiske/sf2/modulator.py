@@ -1,5 +1,5 @@
 
-import wiske.sf2.decode as decode
+from .decode import decode
 from .sfmodulator import SFModulator
 from .definitions import SFGeneralController, SFGenerator, SFTransform
 

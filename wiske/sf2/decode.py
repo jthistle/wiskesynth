@@ -13,7 +13,6 @@ def ascii_str(val):
 
     return res
 
-
 def WORD(val):
     return struct.unpack("<H", val)[0]
 
@@ -28,3 +27,12 @@ def CHAR(val):
 
 def SHORT(val):
     return struct.unpack("<h", val)[0]
+
+
+class decode:
+    ascii_str = ascii_str
+    WORD = WORD
+    DWORD = DWORD
+    BYTE = BYTE
+    CHAR = CHAR
+    SHORT = SHORT
