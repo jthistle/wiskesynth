@@ -102,12 +102,7 @@ class Note:
         position = self.position
         vol_env = self.vol_env
 
-        vol_env_start_val = self.vol_env.start_val
-        vol_env_current_val = self.vol_env.current_val
-        vol_env_target_val = self.vol_env.target_val
-        vol_env_position = self.vol_env.position
-        vol_env_total_time = self.vol_env.total_time
-        vol_env_phase = self.vol_env.current_phase
+        ve_phase, ve_position, ve_start_val, ve_current_val, ve_target_val, ve_total_time = vol_env.get_init_vals()
 
         while (looping or position < end) and count < size:
             i = int(position)
@@ -116,7 +111,7 @@ class Note:
             # If adding the offset overshoots the end of the sample loop, make sure that we wrap back arround
             # to the start of the loop again. Enjoy the horrible conditional.
             s2 = data[i + offset if not looping or i + offset < loop[1] else loop[0] + (i + offset - loop[1])]
-            val = (s1 + (s2 - s1) * frac) * vol_env_current_val
+            val = (s1 + (s2 - s1) * frac) * ve_current_val
 
             finished += [val] * channel_ratio
             count += channel_ratio
@@ -125,23 +120,18 @@ class Note:
             if looping and position > loop[1]:
                 position = loop[0] + (position - loop[1])
 
-            if vol_env_phase not in (4, 6): # sustain, finished
-                vol_env_position += time_diff
-                if vol_env_position >= vol_env_total_time:
-                    vol_env_start_val, vol_env_target_val, vol_env_total_time, vol_env_phase = self.vol_env.next_phase()
-                    vol_env_current_val = vol_env_start_val
-                    vol_env_position = 0
+            if ve_phase not in (4, 6): # sustain, finished
+                ve_position += time_diff
+                if ve_position >= ve_total_time:
+                    ve_start_val, ve_target_val, ve_total_time, ve_phase = self.vol_env.next_phase()
+                    ve_current_val = ve_start_val
+                    ve_position = 0
                 else:
-                    vol_env_current_val = vol_env_start_val + (vol_env_target_val - vol_env_start_val) * (vol_env_position / vol_env_total_time)
+                    ve_current_val = ve_start_val + (ve_target_val - ve_start_val) * (ve_position / ve_total_time)
 
         self.position = position
 
-        self.vol_env.start_val = vol_env_start_val
-        self.vol_env.current_val = vol_env_current_val
-        self.vol_env.target_val = vol_env_target_val
-        self.vol_env.position = vol_env_position
-        self.vol_env.total_time = vol_env_total_time
-        self.vol_env.current_phase = vol_env_phase
+        vol_env.update_vals((ve_phase, ve_position, ve_start_val, ve_current_val, ve_target_val, ve_total_time))
 
         return finished
 

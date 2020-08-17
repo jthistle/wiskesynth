@@ -11,9 +11,9 @@ class Synthesizer:
 
     def __init__(self):
         cfg = AudioConfig()
-        cfg.period_size = 64
-        self.interface = AudioInterface(cfg, max_latency=0.005)
-        
+        cfg.period_size = 128
+        self.interface = AudioInterface(cfg, max_latency=0.0025)
+
         # Experimental
         sys.setswitchinterval(0.1)
 

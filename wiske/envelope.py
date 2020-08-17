@@ -21,12 +21,19 @@ class Envelope:
         self.target_val = 0
         self.total_time = self.phases[0]
 
+    def get_init_vals(self):
+        return self.current_phase, self.position, self.start_val, self.current_val, self.target_val, self.total_time
+
+    def update_vals(self, vals):
+        self.current_phase, self.position, self.start_val, self.current_val, self.target_val, self.total_time = vals
+
     def next_phase(self):
         self.position = 0
         self.current_phase += 1
         self.total_time = self.phases[self.current_phase]      # Invalid if SUSTAIN or FINISHED
 
         if self.current_phase == EnvelopeStage.SUSTAIN:
+            self.start_val = self.target_val
             self.current_val = self.target_val  # This will be the sustain value
         elif self.current_phase == EnvelopeStage.FINISHED:
             self.current_val = 0
@@ -44,7 +51,7 @@ class Envelope:
             self.target_val = self.phases[EnvelopeStage.SUSTAIN]
         # EnvelopeStage.RELEASE is managed in `release`
 
-        return (self.start_val, self.target_val, self.total_time, self.current_phase)
+        return self.start_val, self.target_val, self.total_time, self.current_phase
 
     @property
     def finished(self):

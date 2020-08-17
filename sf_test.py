@@ -13,7 +13,8 @@ inst = synth.new_instrument(0, 0)
 print(synth.sfont.presets_list_user())
 print("ready")
 
-NOTES = [60, 64, 67, 70, 76, 48, 36, 79, 48, 55, 74]
+# Seems to be about the maximum possible notes at the moment
+NOTES = [60, 64, 67, 70, 76, 48, 36, 79, 48, 55, 74, 77] #, 84]
 
 PITCH = -12
 

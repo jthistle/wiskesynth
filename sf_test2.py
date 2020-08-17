@@ -10,7 +10,7 @@ synth = Synthesizer()
 synth.load_soundfont("/home/james/Downloads/GeneralUserGS/GeneralUserGS.sf2")
 # synth.load_soundfont("/home/james/Documents/MuseScore3Development/SoundFonts/MuseScore_General_Lite-v0.1.5/MuseScore_General_Lite.sf2")
 
-inst = synth.new_instrument(1, 123)
+inst = synth.new_instrument(0, 14)
 
 SUSTAIN = True
 REPITCH = 12
@@ -125,6 +125,8 @@ for note in MUSIC:
         continue
     note_val = name_to_val(note[0])
     inst.send_event(EventNoteOn(note_val + REPITCH, 100))
+    inst.send_event(EventNoteOn(note_val + REPITCH + 4, 100))
+    # inst.send_event(EventNoteOn(note_val + REPITCH + 7, 100))
 
     if SUSTAIN:
         time.sleep(note[1] - 0.05)
@@ -132,6 +134,8 @@ for note in MUSIC:
         time.sleep(0.01)
 
     inst.send_event(EventNoteOff(note_val + REPITCH))
+    inst.send_event(EventNoteOff(note_val + REPITCH + 4))
+    # inst.send_event(EventNoteOff(note_val + REPITCH + 7))
 
     if SUSTAIN:
         time.sleep(0.05)
