@@ -137,28 +137,36 @@ class AudioInterface:
         return int(max(-VAL_LIMIT, min(VAL_LIMIT, val * self.volume)))
 
     def start_playback_thread(self):
-        backlog = []
+        # Local vars for optimization
+        raw_bufs = self.raw_buffers
+        collect_funcs = self.custom_collect_funcs
+        req_size = self.period_size_words
+        buffers = self.buffers
+        do_correct_val = self.correct_val
+        put_to_queue = self.alsa_data_queue.put
+        check_queue_full = self.alsa_data_queue.full
+        packer = struct.Struct("<{}h".format(req_size))
+        pack_data = packer.pack
         while True:
             if self.halted:
                 break
 
             # Take the time to delete a single buffer if we think we can get away
             # with it, in order to free up memory
-            if self.alsa_data_queue.full():
-                for buf_id in self.buffers:
-                    buf = self.buffers[buf_id]
+            if check_queue_full():
+                for buf_id in buffers:
+                    buf = buffers[buf_id]
                     if buf.finished and not buf.immortal:
                         try:
-                            del self.raw_buffers[buf_id]
+                            del raw_bufs[buf_id]
                         except IndexError:
-                            del self.custom_collect_funcs[buf_id]
-                        del self.buffers[buf_id]
+                            del collect_funcs[buf_id]
+                        del buffers[buf_id]
                         break
 
-            req_size = self.period_size_words
             final_data = [0] * req_size
-            for buf_id in self.buffers:
-                buffer = self.buffers[buf_id]
+            for buf_id in buffers:
+                buffer = buffers[buf_id]
                 meta = buffer.get_request(req_size)
 
                 if not meta[0]:   # is not custom
@@ -166,7 +174,7 @@ class AudioInterface:
                     uses_loop = loop_start != -1 and loop_end != -1
                     if not uses_loop:
                         i = 0
-                        for x in islice(self.raw_buffers[buf_id], offset, offset + req_size):
+                        for x in islice(raw_bufs[buf_id], offset, offset + req_size):
                             final_data[i] += x
                             i += 1
                         continue
@@ -176,7 +184,7 @@ class AudioInterface:
                     while i < req_size:
                         chunk_size = min(req_size - i, req_size, loop_end - offset)
 
-                        for x in islice(self.raw_buffers[buf_id], offset, offset + chunk_size):
+                        for x in islice(raw_bufs[buf_id], offset, offset + chunk_size):
                             final_data[i] += x
                             i += 1
 
@@ -184,19 +192,15 @@ class AudioInterface:
                 else:
                     _, buf_id, *args = meta
                     i = 0
-                    for x in self.custom_collect_funcs[buf_id](req_size, *args):
+                    for x in collect_funcs[buf_id](req_size, *args):
                         final_data[i] += x
                         i += 1
 
-
-            correct_val = self.correct_val
-            self.alsa_data_queue.put(struct.pack(
-                    "<{}h".format(self.period_size_words),
-                    *(correct_val(x) for x in final_data)
+            put_to_queue(
+                pack_data(
+                    *(do_correct_val(x) for x in final_data)
                 )
             )
-
-
 
     def halt(self):
         self.halted = True

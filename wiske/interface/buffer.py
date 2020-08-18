@@ -28,20 +28,6 @@ class AudioBuffer:
     def end_loop(self):
         self.do_loop = False
 
-    def read(self, response, size):
-        tot = 0
-        for x in response:
-            yield x
-            self.offset += 1
-            tot += 1
-            if not self.do_loop:
-                continue
-            if self.offset == self.loop_end:
-                self.offset = self.loop_start
-
-        for i in range(size - tot):
-            yield 0
-
     @property
     def finished(self):
         return self.offset >= self.size
@@ -58,14 +44,6 @@ class CustomBuffer:
 
     def get_request(self, size):
         return (True, self.id, self.looping)
-
-    def read(self, response, size):
-        for x in response:
-            yield x
-
-        for i in range(size - len(response)):
-            self.finished = True
-            yield 0
 
     def end_loop(self):
         self.looping = False

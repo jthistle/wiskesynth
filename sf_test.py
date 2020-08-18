@@ -14,7 +14,7 @@ print(synth.sfont.presets_list_user())
 print("ready")
 
 # Seems to be about the maximum possible notes at the moment
-NOTES = [60, 64, 67, 70, 76, 48, 36, 79, 48, 55, 74, 77, 84, 100, 101, 102] # ,103]
+NOTES = [60, 64, 67, 70, 76, 48, 36, 79, 48, 55, 74, 77, 84, 100, 101, 102] #, 103]
 
 PITCH = -12
 
