@@ -20,12 +20,18 @@ class Envelope:
         self.current_val = 0
         self.target_val = 0
         self.total_time = self.phases[0]
+        self.force_release = False
 
     def get_init_vals(self):
         return self.current_phase, self.position, self.start_val, self.current_val, self.target_val, self.total_time
 
     def update_vals(self, vals):
-        self.current_phase, self.position, self.start_val, self.current_val, self.target_val, self.total_time = vals
+        if not self.force_release:
+            self.current_phase, self.position, self.start_val, self.current_val, self.target_val, self.total_time = vals
+        else:
+            # Make sure we stay in release phase if it has been activated during a collection.
+            _, self.position, self.start_val, self.current_val, self.target_val, self.total_time = vals
+            self.force_release = False
 
     def next_phase(self):
         self.position = 0
@@ -36,7 +42,9 @@ class Envelope:
             self.start_val = self.target_val
             self.current_val = self.target_val  # This will be the sustain value
         elif self.current_phase == EnvelopeStage.FINISHED:
+            self.start_val = 0
             self.current_val = 0
+            self.target_val = 0
         elif self.current_phase == EnvelopeStage.ATTACK:
             self.start_val = 0
             self.current_val = 0
@@ -63,3 +71,4 @@ class Envelope:
         self.start_val = self.current_val
         self.target_val = 0
         self.total_time = self.phases[self.current_phase]
+        self.force_release = True
