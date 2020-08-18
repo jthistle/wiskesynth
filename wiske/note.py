@@ -90,7 +90,6 @@ class Note:
         channel_ratio = 2        # TODO do this properly
         rate = self.total_ratio
 
-        finished = []
         count = 0
         offset = math.ceil(rate)
         end = self.sample_size - offset
@@ -124,7 +123,7 @@ class Note:
             if ve_phase not in (4, 6): # sustain, finished
                 ve_position += time_diff
                 if ve_position >= ve_total_time:
-                    ve_start_val, ve_target_val, ve_total_time, ve_phase = self.vol_env.next_phase()
+                    ve_start_val, ve_target_val, ve_total_time, ve_phase = vol_env.next_phase()
                     ve_current_val = ve_start_val
                     ve_position = 0
                 else:
@@ -133,6 +132,3 @@ class Note:
         self.position = position
 
         vol_env.update_vals((ve_phase, ve_position, ve_start_val, ve_current_val, ve_target_val, ve_total_time))
-
-        return finished
-

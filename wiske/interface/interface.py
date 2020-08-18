@@ -24,7 +24,7 @@ class AudioInterface:
         self.target_latency = 0.01      # only valid with use_buffering = True
         self.init_buffer_samples = int(self.cfg.sample_rate * self.target_latency)
         self.max_latency = max_latency
-        self.volume = 0.1
+        self.volume = 0.1       # should not be changed during playback unless appropriate changes are made
         self.period_size_words = self.cfg.period_size * self.cfg.channels
 
         self.buffers = {}
@@ -132,21 +132,18 @@ class AudioInterface:
         self.buffers[self.last] = custom_buf
         return self.last
 
-    def correct_val(self, val):
-        VAL_LIMIT = (1 << 15) - 1   # globals are slow
-        return int(max(-VAL_LIMIT, min(VAL_LIMIT, val * self.volume)))
-
     def start_playback_thread(self):
         # Local vars for optimization
+        VAL_LIMIT = (1 << 15) - 1   # globals are slow
         raw_bufs = self.raw_buffers
         collect_funcs = self.custom_collect_funcs
         req_size = self.period_size_words
         buffers = self.buffers
-        do_correct_val = self.correct_val
         put_to_queue = self.alsa_data_queue.put
         check_queue_full = self.alsa_data_queue.full
         packer = struct.Struct("<{}h".format(req_size))
         pack_data = packer.pack
+        volume = self.volume
         while True:
             if self.halted:
                 break
@@ -198,7 +195,7 @@ class AudioInterface:
 
             put_to_queue(
                 pack_data(
-                    *(do_correct_val(x) for x in final_data)
+                    *(int(max(-VAL_LIMIT, min(VAL_LIMIT, x * volume))) for x in final_data)
                 )
             )
 
