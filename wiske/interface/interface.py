@@ -6,10 +6,12 @@ from threading import Thread, Lock
 from multiprocessing import Process, Queue, Pipe, Manager
 
 from ..util.logger import logger
-from .processor import run_processor
+# from .processor import run_processor
 from .alsa import run_alsa
 from .buffer import AudioBuffer
 from .message import MessageType
+
+from itertools import islice
 
 
 class AudioInterface:
@@ -22,9 +24,11 @@ class AudioInterface:
         self.target_latency = 0.01      # only valid with use_buffering = True
         self.init_buffer_samples = int(self.cfg.sample_rate * self.target_latency)
         self.max_latency = max_latency
+        self.volume = 0.1
+        self.period_size_words = self.cfg.period_size * self.cfg.channels
 
+        self.buffers = {}
         self.raw_buffers = {}
-        self.raw_buffers_mutex = Lock()
         self.custom_collect_funcs = {}
         self.last = 0
 
@@ -33,19 +37,16 @@ class AudioInterface:
         # Playback process
         # Queue size = max latency / length of period
         queue_size = int(self.max_latency / self.cfg.period_length)
-        self.playback_pipe, playback_rec = Pipe()
-        alsa_data_queue = Queue(maxsize=queue_size)
-        self.playback_thread = Process(target=run_processor, args=(config, playback_rec, alsa_data_queue))
+        self.alsa_data_queue = Queue(maxsize=queue_size)
 
         # ALSA relay
-        self.alsa_thread = Process(target=run_alsa, args=(self.cfg, alsa_data_queue))
+        self.alsa_thread = Process(target=run_alsa, args=(self.cfg, self.alsa_data_queue))
 
         # Communication with AudioBuffers under playback process
-        self.read_buffers_thread = Thread(target=self.start_read_buffers_thread)
+        self.playback_thread = Thread(target=self.start_playback_thread)
 
-        self.playback_thread.start()
         self.alsa_thread.start()
-        self.read_buffers_thread.start()
+        self.playback_thread.start()
 
         logger.info("Audio interface: init with cfg: {}".format(self.cfg))
         logger.info("Audio interface: queue size is {} (max latency {:.5f}s)".format(queue_size, max_latency))
@@ -63,7 +64,7 @@ class AudioInterface:
                 for j in range(channel_ratio):
                     self.raw_buffers[buf_id].append(buffer[i])
                     xtnd += 1
-            self.playback_pipe.send((MessageType.EXTEND_BUFFER, (buf_id, xtnd)))
+            self.buffers[payload[0]].size += buf_size
             start_point += chunk_size
 
     def play(self, buffer, channels = 2, loop = None, immortal = False):
@@ -96,11 +97,8 @@ class AudioInterface:
         loop = None if loop is None else tuple([x * channel_ratio for x in loop])
         buf = AudioBuffer(self.last, len(new_data), immortal, loop)
 
-        self.raw_buffers_mutex.acquire()
         self.raw_buffers[self.last] = new_data
-        self.raw_buffers_mutex.release()
-
-        self.playback_pipe.send((MessageType.NEW_BUFFER, buf))
+        self.buffers[self.last] = buf
 
         # Now the buffer has been added to the playback processor, we can start extending it
         # with chunks while the first bit of it is playing back. Hopefully we can outpace it.
@@ -124,85 +122,85 @@ class AudioInterface:
         return buffer_id
 
     def end_loop(self, buffer_id):
-        self.playback_pipe.send((MessageType.END_LOOP, buffer_id))
+        self.buffers[buffer_id].end_loop()
 
     def add_custom_buffer(self, custom_buf, collect_func):
         self.last += 1
         custom_buf.id = self.last
         self.custom_collect_funcs[self.last] = collect_func
 
-        self.playback_pipe.send((MessageType.NEW_BUFFER, custom_buf))
+        self.buffers[self.last] = custom_buf
         return self.last
 
-    def start_read_buffers_thread(self):
-        """
-        Expect requests from the playback pipe in the format (message type, payload),
-        where payload is _ for each message type:
-            for REQUEST_RESPONSES:
-                [(is custom, buffer id, size, *args)]
-                if not custom, args are:
-                    (offset, loop start, loop end)
-                else if is custom, args will be passed to collection function.
-            for DELETE_BUFFER:
-                buffer id
-        """
+    def correct_val(self, val):
+        VAL_LIMIT = (1 << 15) - 1   # globals are slow
+        return int(max(-VAL_LIMIT, min(VAL_LIMIT, val * self.volume)))
+
+    def start_playback_thread(self):
         backlog = []
         while True:
             if self.halted:
                 break
-            req = None
-            if not self.playback_pipe.poll() and len(backlog) > 0:
-                req = backlog[0]
-                del backlog[0]
-            else:
-                self.playback_pipe.poll(timeout=None)
-                try:
-                    req = self.playback_pipe.recv()
-                except EOFError:
-                    # Probably need to halt
-                    continue
 
-            msg_type, payload = req
-            if msg_type == MessageType.REQUEST_REPONSES:
-                resp = {}
-                for buffer_meta in payload:
-                    if not buffer_meta[0]:   # is not custom
-                        _, buf_id, size, offset, loop_start, loop_end = buffer_meta
-                        uses_loop = loop_start != -1 and loop_end != -1
-                        if not uses_loop:
-                            resp[buf_id] = self.raw_buffers[buf_id][offset:offset + size]
-                            continue
+            # Take the time to delete a single buffer if we think we can get away
+            # with it, in order to free up memory
+            if self.alsa_data_queue.full():
+                for buf_id in self.buffers:
+                    buf = self.buffers[buf_id]
+                    if buf.finished and not buf.immortal:
+                        try:
+                            del self.raw_buffers[buf_id]
+                        except IndexError:
+                            del self.custom_collect_funcs[buf_id]
+                        del self.buffers[buf_id]
+                        break
 
-                        remaining = size
-                        resp[buf_id] = []
-                        while remaining > 0:
-                            chunk_size = min(remaining, min(size, loop_end - offset))
-                            resp[buf_id] += self.raw_buffers[buf_id][offset:offset + chunk_size]
-                            remaining -= chunk_size
-                            offset = loop_start
-                    else:
-                        _, buf_id, size, *args = buffer_meta
-                        resp[buf_id] = self.custom_collect_funcs[buf_id](size, *args)
+            req_size = self.period_size_words
+            final_data = [0] * req_size
+            for buf_id in self.buffers:
+                buffer = self.buffers[buf_id]
+                meta = buffer.get_request(req_size)
 
-                self.playback_pipe.send((MessageType.REQUEST_REPONSES, resp))
-            elif msg_type == MessageType.DELETE_BUFFER:
-                # 0.01s is a completely arbitrary number - we just don't want
-                # deleting buffers to hold up the much more important job of
-                # sending off buffer data to the processor.
-                if not self.raw_buffers_mutex.acquire(timeout=0.01):
-                    backlog.append(req)
+                if not meta[0]:   # is not custom
+                    _, buf_id, offset, loop_start, loop_end = meta
+                    uses_loop = loop_start != -1 and loop_end != -1
+                    if not uses_loop:
+                        i = 0
+                        for x in islice(self.raw_buffers[buf_id], offset, offset + req_size):
+                            final_data[i] += x
+                            i += 1
+                        continue
+
+                    i = 0
+                    resp[buf_id] = []
+                    while i < req_size:
+                        chunk_size = min(req_size - i, req_size, loop_end - offset)
+
+                        for x in islice(self.raw_buffers[buf_id], offset, offset + chunk_size):
+                            final_data[i] += x
+                            i += 1
+
+                        offset = loop_start
                 else:
-                    if payload in self.raw_buffers:
-                        del self.raw_buffers[payload]
-                    else:
-                        # is custom
-                        del self.custom_collect_funcs[payload]
-                    self.raw_buffers_mutex.release()
+                    _, buf_id, *args = meta
+                    i = 0
+                    for x in self.custom_collect_funcs[buf_id](req_size, *args):
+                        final_data[i] += x
+                        i += 1
+
+
+            correct_val = self.correct_val
+            self.alsa_data_queue.put(struct.pack(
+                    "<{}h".format(self.period_size_words),
+                    *(correct_val(x) for x in final_data)
+                )
+            )
+
+
 
     def halt(self):
         self.halted = True
-        self.playback_thread.kill()
+        self.playback_thread.join()
         self.alsa_thread.kill()
-        self.read_buffers_thread.join()
 
         del self.raw_buffers

@@ -23,7 +23,7 @@ class AudioBuffer:
         else:
             loop_start = self.loop_start
             loop_end = self.loop_end
-        return (False, self.id, size, self.offset, loop_start, loop_end)
+        return (False, self.id, self.offset, loop_start, loop_end)
 
     def end_loop(self):
         self.do_loop = False
@@ -57,7 +57,7 @@ class CustomBuffer:
         self.looping = looping
 
     def get_request(self, size):
-        return (True, self.id, size, self.looping)
+        return (True, self.id, self.looping)
 
     def read(self, response, size):
         for x in response:

@@ -113,7 +113,8 @@ class Note:
             s2 = data[i + offset if not looping or i + offset < loop[1] else loop[0] + (i + offset - loop[1])]
             val = (s1 + (s2 - s1) * frac) * ve_current_val
 
-            finished += [val] * channel_ratio
+            for i in range(channel_ratio):
+                yield val
             count += channel_ratio
 
             position += rate
