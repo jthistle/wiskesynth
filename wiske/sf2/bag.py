@@ -23,8 +23,11 @@ class Bag:
     @property
     def is_global(self):
         assert self.gens is not None
+        # SoundFont 2.01 spec, 7.7
+        # "All generator lists must contain at least one generator with one exception - if
+        #  a global zone exists for which there are no generators but only modulators"
         if len(self.gens) == 0:
-            return False
+            return True
         if self.is_preset:
             return self.gens[-1].operation != SFGenerator.instrument
         else:
@@ -33,17 +36,18 @@ class Bag:
     @property
     def key_range(self):
         assert self.gens is not None
-        if self.gens[0].operation == SFGenerator.keyRange:
+        if not self.is_global and self.gens[0].operation == SFGenerator.keyRange:
             return self.gens[0].amount
         return SF_GEN_DEFAULTS[SFGenerator.keyRange]
 
     @property
     def vel_range(self):
         assert self.gens is not None
-        if self.gens[0].operation == SFGenerator.velRange:
-            return self.gens[0].amount
-        elif len(self.gens) > 1 and self.gens[1].operation == SFGenerator.velRange:
-            return self.gens[1].amount
+        if not self.is_global:
+            if self.gens[0].operation == SFGenerator.velRange:
+                return self.gens[0].amount
+            elif len(self.gens) > 1 and self.gens[1].operation == SFGenerator.velRange:
+                return self.gens[1].amount
         return SF_GEN_DEFAULTS[SFGenerator.velRange]
 
     def applies_to(self, key, vel):

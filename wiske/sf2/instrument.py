@@ -26,6 +26,8 @@ class Instrument:
                 continue
             return bag.sample(samples)
 
+        return None
+
     def __str__(self):
         bags = []
         for x in self.bags:

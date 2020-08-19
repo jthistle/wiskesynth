@@ -92,6 +92,10 @@ class Preset:
 
         return gens, mods
 
+    @property
+    def user_name(self):
+        return "Preset '{}' @ {:03d}:{:03d}".format(self.name, self.bank, self.preset_num)
+
     def __str__(self):
         bags_str = "n/a"
         if self.bags is not None:
