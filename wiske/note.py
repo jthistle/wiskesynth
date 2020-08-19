@@ -1,5 +1,5 @@
 
-import math
+from math import ceil
 import struct
 import time
 
@@ -13,7 +13,7 @@ from .util.logger import logger
 
 COARSE_SIZE = 2 ** 15
 BASE_SAMPLE_RATE = 44100
-SINGLE_SAMPLE_LEN = 1 / 44100
+SINGLE_SAMPLE_LEN = 1 / BASE_SAMPLE_RATE
 
 
 class Note:
@@ -61,6 +61,9 @@ class Note:
             timecents_to_secs(self.gens[SFGenerator.releaseVolEnv]),
         )
 
+        self.channel_ratio = 2      # TODO do this properly
+        self.single_sample_len = SINGLE_SAMPLE_LEN
+
         # Optional debug:
         # print("gens")
         # for g in self.gens:
@@ -87,21 +90,25 @@ class Note:
             self.inter.end_loop(self.playback)  # TODO thread this?
             return []
 
-        channel_ratio = 2        # TODO do this properly
+        channel_ratio = self.channel_ratio
         rate = self.total_ratio
 
         count = 0
-        offset = math.ceil(rate)
+        offset = ceil(rate)
         end = self.sample_size - offset
 
         # Whole load of local variables for optimization
-        time_diff = SINGLE_SAMPLE_LEN
+        time_diff = self.single_sample_len
         loop = self.loop
         data = self.sample_data
         position = self.position
         vol_env = self.vol_env
-
         ve_phase, ve_position, ve_start_val, ve_current_val, ve_target_val, ve_total_time = vol_env.get_init_vals()
+
+        two_ratio = channel_ratio == 2
+
+        loop_s = loop[0]
+        loop_e = loop[1]
 
         while (looping or position < end) and count < size:
             i = int(position)
@@ -109,16 +116,17 @@ class Note:
             s1 = data[i]
             # If adding the offset overshoots the end of the sample loop, make sure that we wrap back arround
             # to the start of the loop again. Enjoy the horrible conditional.
-            s2 = data[i + offset if not looping or i + offset < loop[1] else loop[0] + (i + offset - loop[1])]
+            s2 = data[i + offset if not looping or i + offset < loop_e else loop_s + (i + offset - loop_e)]
             val = (s1 + (s2 - s1) * frac) * ve_current_val
 
-            for i in range(channel_ratio):
+            yield val
+            if two_ratio:
                 yield val
             count += channel_ratio
 
             position += rate
-            if looping and position > loop[1]:
-                position = loop[0] + (position - loop[1])
+            if looping and position > loop_e:
+                position = loop_s + (position - loop_e)
 
             if ve_phase not in (4, 6): # sustain, finished
                 ve_position += time_diff
