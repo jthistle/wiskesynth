@@ -26,6 +26,7 @@ class AudioInterface:
         self.volume = 0.1       # should not be changed during playback unless appropriate changes are made
         self.period_size_words = self.cfg.period_size * self.cfg.channels
 
+        self.buffers_lock = Lock()
         self.buffers = {}
         self.raw_buffers = {}
         self.custom_collect_funcs = {}
@@ -97,7 +98,10 @@ class AudioInterface:
         buf = AudioBuffer(self.last, len(new_data), immortal, loop)
 
         self.raw_buffers[self.last] = new_data
+
+        self.buffers_lock.acquire()
         self.buffers[self.last] = buf
+        self.buffers_lock.release()
 
         # Now the buffer has been added to the playback processor, we can start extending it
         # with chunks while the first bit of it is playing back. Hopefully we can outpace it.
@@ -128,7 +132,9 @@ class AudioInterface:
         custom_buf.id = self.last
         self.custom_collect_funcs[self.last] = collect_func
 
+        self.buffers_lock.acquire()
         self.buffers[self.last] = custom_buf
+        self.buffers_lock.release()
         return self.last
 
     def start_playback_thread(self):
@@ -143,12 +149,15 @@ class AudioInterface:
         packer = struct.Struct("<{}h".format(req_size))
         pack_data = packer.pack
         volume = self.volume
+        acquire_buf_lock = self.buffers_lock.acquire
+        release_buf_lock = self.buffers_lock.release
         while True:
             if self.halted:
                 break
 
             # Take the time to delete a single buffer if we think we can get away
             # with it, in order to free up memory
+            acquire_buf_lock()
             if check_queue_full():
                 for buf_id in buffers:
                     buf = buffers[buf_id]
@@ -191,6 +200,8 @@ class AudioInterface:
                     for x in collect_funcs[buf_id](req_size, *args):
                         final_data[i] += x
                         i += 1
+
+            release_buf_lock()
 
             put_to_queue(
                 pack_data(
