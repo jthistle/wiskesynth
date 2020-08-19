@@ -6,7 +6,6 @@ from threading import Thread, Lock
 from multiprocessing import Process, Queue, Pipe, Manager
 
 from ..util.logger import logger
-# from .processor import run_processor
 from .alsa import run_alsa
 from .buffer import AudioBuffer
 from .message import MessageType
@@ -202,6 +201,6 @@ class AudioInterface:
     def halt(self):
         self.halted = True
         self.playback_thread.join()
-        self.alsa_thread.kill()
+        self.alsa_thread.terminate()
 
         del self.raw_buffers
