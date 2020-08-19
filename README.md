@@ -15,7 +15,7 @@ of a soundfont and set its location in the code for it to work properly).
 
 Running with the vanilla Python interpreter, you can get about 25-ish notes playing simultaneously, currently.
 
-Running with PyPy, it can play hundreds of notes simultaneously! Seriously, if you want any kind of real performance
+Running with PyPy, it can play about two hundred notes simultaneously! Seriously, if you want any kind of real performance
 out of this thing, **you need to run it with PyPy**.
 
 ## Structure
