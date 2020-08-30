@@ -4,7 +4,7 @@ import struct
 import time
 
 from .repitch import cents_to_ratio
-from .sf2.definitions import SFGenerator, LoopType
+from .sf2.definitions import SFGenerator, LoopType, SFGeneralController, SFModPolarity, SFModDirection, SFTransform
 from .interface import CustomBuffer
 from .sf2.convertors import timecents_to_secs, decibels_to_atten
 from .envelope import Envelope
@@ -69,11 +69,63 @@ class Note:
         # for g in self.gens:
         #     print(">",g,self.gens[g])
 
-        # print("\n\nmods")
-        # for m in self.mods:
-        #     print(">",m)
+        print("\n\nmods")
+        for m in self.mods:
+            print(">",m)
 
         # print("\nsample:", self.sample)
+
+        self.last_mod_inputs = {
+            SFGeneralController.noController: 0,
+            SFGeneralController.noteOnKeyNum: key,
+            SFGeneralController.noteOnVel: on_vel,
+            SFGeneralController.polyPressure: on_vel,
+            SFGeneralController.channelPressure: on_vel,
+        }
+
+        self.cached_modulator_values_raw = {}
+        for i in range(len(self.mods)):
+            self.recalculate_modulator(i)
+
+    def update_mod_input(self, mod_controller, amount):
+        self.last_mod_inputs[mod_controller] = amount
+        for i in range(self.mods):
+            mod = self.mods[i]
+            if mod.src.controller == mod_controller or mod.amt_src.controller == mod_controller:
+                self.recalculate_modulator(i)
+
+    def recalculate_modulator(self, index):
+        # Default to MIDI 100 for no real reason
+        DEFAULT_MIDI_VAL = 100
+        mod = self.mods[index]
+        primary = mod.src
+        primary_val = self.last_mod_inputs.get(primary.controller, DEFAULT_MIDI_VAL)
+        mapped_primary = self.map_midi(primary_val, primary)
+        secondary = mod.amt_src
+        mapped_secondary = None
+        if secondary.controller == SFGeneralController.noController:
+            mapped_secondary = 1
+        else:
+            secondary_val = self.last_mod_inputs.get(secondary.controller, DEFAULT_MIDI_VAL)
+            mapped_secondary = self.map_midi(secondary_val, secondary)
+
+        pre_transform = mapped_primary * mapped_secondary * mod.amount
+
+        post_transform = None
+        if mod.trans == SFTransform.linear:
+            post_transform = pre_transform
+        else:
+            post_transform = abs(pre_transform)
+
+        self.cached_modulator_values_raw[index] = post_transform
+
+    def map_midi(self, val, sfmodulator):
+        # TODO this is all linear - we need to respect mappings
+        unit = 1 if sfmodulator.direction == SFModDirection.positive else -1
+        if sfmodulator.polarity == SFModPolarity.unipolar:
+            return unit * val / 128
+        else:
+            return unit * (val - 64) / 64
 
     def play(self):
         if not self.sample.is_mono:
