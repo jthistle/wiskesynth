@@ -23,7 +23,7 @@ class AudioInterface:
         self.target_latency = 0.01      # only valid with use_buffering = True
         self.init_buffer_samples = int(self.cfg.sample_rate * self.target_latency)
         self.max_latency = max_latency
-        self.volume = 0.1       # should not be changed during playback unless appropriate changes are made
+        self.volume = 1 # 0.1       # should not be changed during playback unless appropriate changes are made
         self.period_size_words = self.cfg.period_size * self.cfg.channels
 
         self.buffers_lock = Lock()

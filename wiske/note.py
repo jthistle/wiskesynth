@@ -22,7 +22,8 @@ class Note:
         self.sample = sample
         self.key = key
         self.on_vel = on_vel
-        self.gens = gens
+        self.init_gens = gens
+        self.reset_gens_to_init()
         self.mods = mods
 
         self.playback = None
@@ -76,11 +77,11 @@ class Note:
         self.single_sample_len = SINGLE_SAMPLE_LEN
 
         # LOW PASS cutoff
-        self.init_filter_fc = cents_to_hertz(self.gens[SFGenerator.initialFilterFc])
-
-        self.cutoff_freq = self.init_filter_fc
         self.recalculate_cutoff()
         self.last_val = 0
+
+        # Attenuation
+        self.recalculate_atten()
 
         # Optional debug:
         # print("gens")
@@ -104,6 +105,7 @@ class Note:
         self.cached_modulator_values_raw = {}
         for i in range(len(self.mods)):
             self.recalculate_modulator(i)
+        self.update_mod_destinations()
 
     def update_mod_input(self, mod_controller, amount):
         self.last_mod_inputs[mod_controller] = amount
@@ -111,10 +113,11 @@ class Note:
             mod = self.mods[i]
             if mod.src.controller == mod_controller or mod.amt_src.controller == mod_controller:
                 self.recalculate_modulator(i)
+        self.update_mod_destinations()
 
     def recalculate_modulator(self, index):
-        # Default to MIDI 100 for no real reason
-        DEFAULT_MIDI_VAL = 100
+        # Default to MIDI 127 for no real reason
+        DEFAULT_MIDI_VAL = 127
         mod = self.mods[index]
         primary = mod.src
         primary_val = self.last_mod_inputs.get(primary.controller, DEFAULT_MIDI_VAL)
@@ -139,15 +142,43 @@ class Note:
 
     def map_midi(self, val, sfmodulator):
         # TODO this is all linear - we need to respect mappings
-        unit = 1 if sfmodulator.direction == SFModDirection.positive else -1
+        if sfmodulator.direction == SFModDirection.negative:
+            val = 127 - val
         if sfmodulator.polarity == SFModPolarity.unipolar:
-            return unit * val / 128
+            return val / 128
         else:
-            return unit * (val - 64) / 64
+            return (val - 64) / 64
+
+    def update_mod_destinations(self):
+        self.reset_gens_to_init()
+        for i in range(len(self.mods)):
+            mod = self.mods[i]
+
+            if mod.dest == SFGenerator.initialFilterFc:
+                self.gens[mod.dest] += cents_to_hertz(self.cached_modulator_values_raw[i])
+                self.recalculate_cutoff()
+            elif mod.dest == SFGenerator.initialAttenuation:
+                print("adding atten {:.2f}cB to {:.2f}cB from mod {}".format(self.cached_modulator_values_raw[i], self.gens[mod.dest], i))
+                self.gens[mod.dest] += self.cached_modulator_values_raw[i]
+                self.recalculate_atten()
+            else:
+                pass # print("Unhandled dest:", mod.dest)
+            # TODO a lot of stuff here
+
+    def reset_gens_to_init(self):
+        self.gens = {}
+        for gen in self.init_gens:    # make shallow copy
+            self.gens[gen] = self.init_gens[gen]
 
     def recalculate_cutoff(self):
-        self.cutoff_time_const = 1 / (2 * pi * self.cutoff_freq)
+        print("filter is", cents_to_hertz(self.gens[SFGenerator.initialFilterFc]))
+        self.cutoff_time_const = 1 / (2 * pi * cents_to_hertz(self.gens[SFGenerator.initialFilterFc]))
         self.cutoff_alpha = SINGLE_SAMPLE_LEN / (SINGLE_SAMPLE_LEN + self.cutoff_time_const)
+
+    def recalculate_atten(self):
+        self.atten = decibels_to_atten(self.gens[SFGenerator.initialAttenuation] / 10)
+        print("calc atten = {:.5f} from {:.2f}cB".format(self.atten, self.gens[SFGenerator.initialAttenuation]))
+        # self.atten = 1
 
     def frame_sample_data(self, data, offset_s, offset_e):
         if offset_e == 0:
@@ -212,6 +243,7 @@ class Note:
         last = self.last_val
         cutoff_alpha = self.cutoff_alpha
         reverse_cutoff_alpha = 1 - cutoff_alpha
+        atten = self.atten
         while (looping or position < end) and count < size:
             i = to_int(position)
             frac = position - i
@@ -219,7 +251,7 @@ class Note:
             # If adding the offset overshoots the end of the sample loop, make sure that we wrap back arround
             # to the start of the loop again. Enjoy the horrible conditional.
             s2 = data[i + offset if not looping or i + offset < loop_e else loop_s + (i + offset - loop_e)]
-            val = (s1 + (s2 - s1) * frac) * ve_current_val
+            val = (s1 + (s2 - s1) * frac) * ve_current_val * atten
 
             with_filter = cutoff_alpha * val + reverse_cutoff_alpha * last
             last = with_filter
