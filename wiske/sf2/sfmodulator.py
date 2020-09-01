@@ -36,6 +36,14 @@ class SFModulator:
     def is_general_controller(self):
         return type(self.controller) == SFGeneralController
 
+    def __eq__(self, b):
+        return (
+            self.polarity == b.polarity and
+            self.direction == b.direction and
+            self.type == b.type and
+            self.controller == b.controller
+        )
+
     def __str__(self):
         return "SFModulator, type {} controller {} polarity {} direction {}".format(
             self.type, self.controller, self.polarity, self.direction

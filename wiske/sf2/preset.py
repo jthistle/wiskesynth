@@ -54,10 +54,17 @@ class Preset:
             # "A modulator, that is contained in a local instrument zone, which is identical
             # to a default modulator or to a modulator in a global instrument zone supersedes
             # or replaces that modulator."
+            print("\n".join([str(x) for x in bag.mods]))
             for mod in bag.mods:
+                replaced = False
                 for i in range(len(mods)):
                     if mods[i] == mod:
                         mods[i] = mod
+                        replaced = True
+                        break
+
+                if not replaced:
+                    mods.append(mod)
 
 
         # Preset zones are additive
@@ -84,9 +91,16 @@ class Preset:
                 # in the global preset zone. That modulator then has its effects added to
                 # the destination summing node of all zones in the given instrument."
                 for mod in bag.mods:
+                    replaced = False
                     for i in range(len(preset_mods_global)):
                         if preset_mods_global[i] == mod:
                             preset_mods_global[i] = mod
+                            replaced = True
+                            break
+
+                    if not replaced:
+                        preset_mods_global.append(mod)
+
 
         mods += preset_mods_global
 
