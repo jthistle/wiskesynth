@@ -1,10 +1,10 @@
 
-from math import ceil, pi
+from math import ceil, pi, log10
 import struct
 import time
 
 from .repitch import cents_to_ratio
-from .sf2.definitions import SFGenerator, LoopType, SFGeneralController, SFModPolarity, SFModDirection, SFTransform
+from .sf2.definitions import SFGenerator, LoopType, SFGeneralController, SFModPolarity, SFModDirection, SFTransform, SFModType
 from .interface import CustomBuffer
 from .sf2.convertors import timecents_to_secs, decibels_to_atten, cents_to_hertz
 from .envelope import Envelope
@@ -98,8 +98,8 @@ class Note:
             SFGeneralController.noController: 0,
             SFGeneralController.noteOnKeyNum: key,
             SFGeneralController.noteOnVel: on_vel,
-            SFGeneralController.polyPressure: on_vel,
-            SFGeneralController.channelPressure: on_vel,
+            SFGeneralController.polyPressure: 127,  # todo should be on_vel?
+            SFGeneralController.channelPressure: 127,   # todo should be on_vel?
         }
 
         self.cached_modulator_values_raw = {}
@@ -124,6 +124,7 @@ class Note:
         mapped_primary = self.map_midi(primary_val, primary)
         secondary = mod.amt_src
         mapped_secondary = None
+        secondary_val = None    # debug
         if secondary.controller == SFGeneralController.noController:
             mapped_secondary = 1
         else:
@@ -138,16 +139,68 @@ class Note:
         else:
             post_transform = abs(pre_transform)
 
+        DO_PRINT_DEBUG = False
+
+        if DO_PRINT_DEBUG:
+            print("""
+Primary
+{p_val} from {p_src}
+|
+|     norm:     total sum  transformed    summing node
+`-> [ {p_norm:.5f} ] -->▷{sum:.3f}->[ {transform:.3f} ] -> {node}  ({db:.6f}atn., {hz:.2f}Hz)
+                 |
+               {s_sum:.3f}  (amt. product)
+                 |
+                 /\ <-- {amount}  (amount)
+                 |
+      norm:  [ {s_norm:.5f} ]
+                 |
+                 |     Secondary
+                 \.-- {s_val} from {s_src}
+""".format(p_src=primary, p_val=primary_val, p_norm=mapped_primary, s_val=secondary_val, s_src=secondary, s_norm=mapped_secondary, amount=mod.amount,
+            s_sum=mod.amount*mapped_secondary, sum=pre_transform, transform=post_transform, node=mod.dest,
+            db=(decibels_to_atten(post_transform / 10) if 1 >= decibels_to_atten(post_transform / 10) >= 0 else -1), hz=cents_to_hertz(post_transform)))
+
         self.cached_modulator_values_raw[index] = post_transform
 
     def map_midi(self, val, sfmodulator):
-        # TODO this is all linear - we need to respect mappings
-        if sfmodulator.direction == SFModDirection.negative:
-            val = 127 - val
-        if sfmodulator.polarity == SFModPolarity.unipolar:
-            return val / 128
+        map_func = None
+        if sfmodulator.type == SFModType.concave:
+            map_func = self.map_concave
+        elif sfmodulator.type == SFModType.convex:
+            map_func = self.map_convex
         else:
-            return (val - 64) / 64
+            map_func = self.map_linear
+
+        if sfmodulator.polarity == SFModPolarity.unipolar:
+            return map_func(val / 128, sfmodulator.direction)
+        else:
+            if val <= 64:
+                return -map_func((64 - val) / 64, sfmodulator.direction)
+            else:
+                return map_func((val - 64) / 64, sfmodulator.direction)
+
+    # All map_* functions and base_conx expect val to be in the range (0, 1)
+    def map_linear(self, val, direction):
+        if direction == SFModDirection.negative:
+            return 1 - val
+        else:
+            return val
+
+    def map_convex(self, val, direction):
+        if direction == SFModDirection.negative:
+            return self.base_conx_function(1 - val)
+        else:
+            return self.base_conx_function(val)
+
+    def map_concave(self, val, direction):
+        if direction == SFModDirection.negative:
+            return 1 - self.base_conx_function(val)
+        else:
+            return 1 - self.base_conx_function(1 - val)
+
+    def base_conx_function(self, val):
+        return log10(9 * val + 1)
 
     def update_mod_destinations(self):
         self.reset_gens_to_init()

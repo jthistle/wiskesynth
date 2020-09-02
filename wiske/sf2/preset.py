@@ -54,7 +54,6 @@ class Preset:
             # "A modulator, that is contained in a local instrument zone, which is identical
             # to a default modulator or to a modulator in a global instrument zone supersedes
             # or replaces that modulator."
-            print("\n".join([str(x) for x in bag.mods]))
             for mod in bag.mods:
                 replaced = False
                 for i in range(len(mods)):
