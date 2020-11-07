@@ -1,5 +1,7 @@
 # Wiske
 
+**NOTICE: sadly, I have had to discontinue this project. I would strongly recommend against using it in any real software, but feel free to take the code and do what you like with it.**
+
 Wiske (pronounced /ˈwɪskə/) is a synthesizer written in Python, for use in Python programmes.
 
 It is still in early development, but can already play, to some degree, soundfonts in the sf2 format.
